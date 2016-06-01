@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <ctime>
+#include <cuda_runtime.h>
+
 using namespace std;
 
 const int N = 400;
@@ -21,8 +23,8 @@ void Init_Data(){
 		}
 	}
 	//Mat B
-	for (int i = 0;i < P;++i){
-		for (int j = 0;j < M;++j){
+	for (int i = 0;i < P ;++i){
+		for (int j = 0;j  < M;++j){
 			B[i][j] = M * 1.0 / ((i+1) * (j+1));
 		}
 	}
@@ -30,24 +32,25 @@ void Init_Data(){
 	cudaMalloc((void **)&A_D, sizeof(float) * N * P);
 	cudaMalloc((void **)&B_D, sizeof(float) * P * M);
 	cudaMalloc((void **)&C_D, sizeof(float) * N * M);
-	cudaMemcpy(A_D, (void*)A, sizeof(float) * N * P, cudaMemoryHostToDevice);
-	cudaMemcpy(B_D, (void*)B, sizeof(float) * P * M, cudaMemoryHostToDevice);
+	cudaMemcpy(A_D, (void*)A, sizeof(float) * N * P, cudaMemcpyHostToDevice);
+	cudaMemcpy(B_D, (void*)B, sizeof(float) * P * M, cudaMemcpyHostToDevice);
 }
 
-__global__
-void MatMul(){
-	int i = threadIdx.x;
-	int j = threadIdx.y;
+__global__ void MatMul(float *A_D, float *B_D, float *C_D){
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	int j = threadIdx.y + blockIdx.y * blockDim.y;
 	if (i >= N || j >= M)return;
+	
 	float v = 0;
 	for (int k = 0;k < P;++k){
-		v += A_D[i* P + k] * B_D[k* M + j];
-	}
+		v += A_D[i * P + k] * B_D[k * M + j];
+ 	}
 	C_D[i * M + j] = v;
-}
+	
+} 
 
 void Output(){
-	cudaMemcpy((void*)C, C_D, sizeof(float) * N * M, cudaMemoryDeviceToHost); 
+	cudaMemcpy((void*)C, C_D, sizeof(float) * N * M, cudaMemcpyDeviceToHost); 
 	ofstream fout("cudaresult.txt");
 	for (int i = 0;i < N;++i){
 		for (int j = 0;j < M;++j){
@@ -62,11 +65,12 @@ void Output(){
 
 int main(){
 	Init_Data();
-	dim3 dimGrid(1, 1);
+	dim3 dimGrid(20, 20);
 	//dim3 dimBlock(N,M);
-	dim3 dimBlock((N+31)/32*32,(M+31)/32*32);
+	//dim3 dimBlock((N+31)/32*32,(M+31)/32*32);
+	dim3 dimBlock(20,10);
 	clock_t t = clock();
-	MatMul<<<dimGrid, dimBlock>>>();
+	MatMul<<<dimGrid, dimBlock>>>(A_D, B_D, C_D);
 	cout << "Cuda Used Time: "<< double((clock() - t)*1.0/CLOCKS_PER_SEC) << endl;
 	Output();
 
